@@ -1,0 +1,56 @@
+import socket
+import threading
+import sqlite3
+
+def save_message(sender, content):
+    conn = sqlite3.connect('chat_messages.db')
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO messages (sender, content) VALUES (?, ?)", (sender, content))
+    conn.commit()
+    conn.close()
+
+def handle_client(client_socket, address):
+    while True:
+        try:
+            message = client_socket.recv(1024).decode('utf-8')
+            if message:
+                save_message(address[0], message)
+                broadcast(message, client_socket)
+            else:
+                break
+        except:
+            break
+
+def broadcast(message, client_socket):
+    for socket in clients:
+        if socket != client_socket:
+            try:
+                socket.send(message.encode('utf-8'))
+            except:
+                continue
+
+conn = sqlite3.connect('chat_messages.db')
+cursor = conn.cursor()
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY,
+        sender TEXT NOT NULL,
+        content TEXT NOT NULL,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+''')
+conn.commit()
+conn.close()
+
+server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server_socket.bind(('0.0.0.0', 5555))
+server_socket.listen(5)
+
+clients = []
+
+while True:
+    client_socket, address = server_socket.accept()
+    clients.append(client_socket)
+
+    client_thread = threading.Thread(target=handle_client, args=(client_socket, address))
+    client_thread.start()
